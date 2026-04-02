@@ -26,7 +26,7 @@ GMAIL_RECIPIENT  = os.getenv("GMAIL_RECIPIENT", "")
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 DB_PATH          = "datacharizard.db"
-OBSIDIAN_VAULT   = os.path.expanduser("~/obsidian_vault/DataCharizard")
+OBSIDIAN_VAULT   = os.path.expanduser("/Users/mithunkarthickmuthu/Documents/Obsidian/Mithun\'s_Notes/DataCharizard")
 
 # ── News RSS feeds ────────────────────────────────────────────────────────────
 NEWS_FEEDS = [

@@ -94,8 +94,8 @@ This lets DataCharizard send emails without your real password:
 
 1. Go to **myaccount.google.com**
 2. Security → **2-Step Verification** (must be ON)
-3. Security → **App passwords** (scroll down)
-4. Select app: **Mail** → Select device: **Other** → type "DataCharizard" → Generate
+3. Then go to https://myaccount.google.com/apppasswords
+4. enter **App name** → type "DataCharizard" → Generate
 5. Copy the 16-character password (format: `xxxx xxxx xxxx xxxx`)
 6. Paste into `.env`:
    ```
