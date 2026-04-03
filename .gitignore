@@ -40,3 +40,8 @@ obsidian_vault/
 *.egg-info/
 dist/
 build/
+
+# Resume — personal files, never commit
+resume/base_resume.pdf
+resume/output/
+ 

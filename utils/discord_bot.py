@@ -296,28 +296,137 @@ async def lesson_command(interaction: discord.Interaction,
     add_progress(topic, number, XP_PER_LESSON)
 
 
-# ── /jobs command ─────────────────────────────────────────────────────────────
 
-@tree.command(name="jobs", description="Show latest Australian data engineering jobs")
-async def jobs_command(interaction: discord.Interaction):
+# ── /jobs command — paginated, all jobs, numbered ────────────────────────────
+
+JOBS_PER_PAGE = 10
+
+@tree.command(name="jobs", description="Browse all scraped AU data jobs — pick a number to tailor your resume")
+@app_commands.describe(page="Page number (default 1)")
+async def jobs_command(interaction: discord.Interaction, page: int = 1):
     from utils.db import get_conn
+
     with get_conn() as conn:
+        total = conn.execute("SELECT COUNT(*) FROM jobs").fetchone()[0]
+        offset = (page - 1) * JOBS_PER_PAGE
         rows = conn.execute(
-            "SELECT title, company, location, url, source FROM jobs "
-            "ORDER BY scraped_on DESC LIMIT 8"
+            "SELECT id, title, company, location, source, url FROM jobs "
+            "ORDER BY scraped_on DESC LIMIT ? OFFSET ?",
+            (JOBS_PER_PAGE, offset)
         ).fetchall()
+
     if not rows:
         await interaction.response.send_message(
-            "No jobs scraped yet. Run the daily task first!", ephemeral=True)
+            "No jobs found. Run `python main.py jobs` first!", ephemeral=True)
         return
-    embed = discord.Embed(title="🧑‍💻 Latest data jobs in Australia", color=0x0A66C2)
-    for r in rows:
-        embed.add_field(
-            name=f"{r['title'][:45]} — {r['company']}",
-            value=f"📍 {r['location']} · {r['source'].upper()} · [Apply]({r['url']})",
-            inline=False
-        )
+
+    total_pages = max(1, (total + JOBS_PER_PAGE - 1) // JOBS_PER_PAGE)
+    start_num   = offset + 1   # global job number
+
+    description = ""
+    for i, r in enumerate(rows):
+        num     = start_num + i
+        title   = r["title"][:40]
+        company = r["company"][:22]
+        source  = r["source"].upper()
+        description += f"`{num:>3}` **{title}** — {company} · {source}\n"
+
+    embed = discord.Embed(
+        title=f"🧑‍💻 Data jobs in Australia — Page {page}/{total_pages}",
+        description=description,
+        color=0x0A66C2
+    )
+    embed.set_footer(
+        text=f"{total} total jobs · "
+             f"/jobs page:{page+1} for next · "
+             f"/resume number:N to tailor your resume"
+    )
     await interaction.response.send_message(embed=embed)
+
+
+# ── /resume command — generate tailored PDF and send as attachment ────────────
+
+@tree.command(name="resume", description="Generate a tailored resume PDF for a job (use number from /jobs)")
+@app_commands.describe(number="Job number from /jobs list")
+async def resume_command(interaction: discord.Interaction, number: int):
+    await interaction.response.defer(thinking=True)
+
+    from utils.db import get_conn
+    from pathlib import Path
+
+    # Get the job by its position in the sorted list
+    offset = number - 1
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT id, title, company, location, source, url, skills FROM jobs "
+            "ORDER BY scraped_on DESC LIMIT 1 OFFSET ?",
+            (offset,)
+        ).fetchone()
+
+    if not row:
+        await interaction.followup.send(
+            f"❌ Job #{number} not found. Use /jobs to see available jobs.",
+            ephemeral=True)
+        return
+
+    import json, re, os
+    job = dict(row)
+    job["skills"] = json.loads(job.get("skills") or "[]")
+
+    # Check base resume exists
+    BASE_RESUME = Path(__file__).parent.parent / "resume" / "base_resume.pdf"
+    if not BASE_RESUME.exists():
+        await interaction.followup.send(
+            "❌ No base resume found. Add `resume/base_resume.pdf` to your project.",
+            ephemeral=True)
+        return
+
+    try:
+        # Load + customise resume
+        await interaction.followup.send(
+            f"⚙️ Tailoring resume for **{job['title']}** at **{job['company']}**...",
+            ephemeral=False)
+
+        from tasks.resume_builder import (parse_resume, customise_resume,
+                                          generate_pdf, sort_reverse_chron,
+                                          OUTPUT_DIR)
+
+        base       = parse_resume(BASE_RESUME)
+        customised = customise_resume(base, job)
+
+        if customised.get("experience"):
+            customised["experience"] = sort_reverse_chron(customised["experience"])
+        if customised.get("education"):
+            customised["education"]  = sort_reverse_chron(customised["education"])
+
+        # Generate PDF
+        safe_co    = re.sub(r"[^\w\s-]", "", job["company"]).strip().replace(" ", "_")
+        safe_title = re.sub(r"[^\w\s-]", "", job["title"]).strip().replace(" ", "_")[:30]
+        from datetime import date as _date
+        filename   = f"{safe_co}_{safe_title}_{_date.today()}.pdf"
+        output     = OUTPUT_DIR / filename
+
+        generate_pdf(customised, output)
+
+        # Send PDF as Discord attachment
+        embed = discord.Embed(
+            title=f"✅ Resume ready — {job['title']} at {job['company']}",
+            description=f"📍 {job['location']} · {job['source'].upper()}",
+            color=0x57F287
+        )
+        embed.add_field(name="Apply", value=f"[Job listing]({job['url']})", inline=False)
+        embed.set_footer(text="PDF attached · Also saved to resume/output/ on your computer")
+
+        with open(str(output), "rb") as f:
+            file = discord.File(f, filename=filename)
+            await interaction.followup.send(embed=embed, file=file)
+
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Error generating resume: {e}\n"
+            "Make sure the bot is running on your computer and base_resume.pdf exists.",
+            ephemeral=True)
+
 
 
 # ── Runner ─────────────────────────────────────────────────────────────────────
