@@ -91,6 +91,10 @@ if __name__ == "__main__":
         from tasks.job_tracker import run; run()
     elif cmd == "weekly":
         run_weekly()
+    elif cmd == "resume":
+        from tasks.resume_builder import run as resume_run
+        reparse = "--reparse" in sys.argv
+        resume_run(reparse=reparse)
     elif cmd == "dashboard":
         os.system("streamlit run dashboard/app.py")
     elif cmd == "setup":
