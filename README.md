@@ -11,7 +11,7 @@ A three-in-one AI agent that:
 
 ### Step 1 — Clone and install
 ```bash
-git clone <your-repo>
+git clone datacharizard
 cd datacharizard
 pip install -r requirements.txt
 ```
